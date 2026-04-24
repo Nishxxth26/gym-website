@@ -28,7 +28,9 @@ async function initializeDB() {
   console.log('Database initialized.');
 }
 
-initializeDB();
+initializeDB().catch(err => {
+  console.error("Database initialization failed:", err);
+});
 
 // Signup Route
 app.post('/signup', async (req, res) => {
@@ -44,7 +46,7 @@ app.post('/signup', async (req, res) => {
     await db.run('INSERT INTO users (email, password) VALUES (?, ?)', [email, hashedPassword]);
     res.json({ message: 'User registered successfully!' });
   } catch (error) {
-    if (error.message.includes('UNIQUE constraint failed')) {
+    if (error.message && error.message.includes('UNIQUE constraint failed')) {
       res.status(400).json({ error: 'Email already exists' });
     } else {
       console.error(error);
@@ -79,6 +81,6 @@ app.post('/login', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running on http://0.0.0.0:${PORT}`);
 });
