@@ -1,7 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const sqlite3 = require('sqlite3').verbose();
-const { open } = require('sqlite');
 const bcrypt = require('bcryptjs');
 
 const app = express();
@@ -9,28 +7,9 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname)); // Serve static files (index.html)
 
-let db;
-
-async function initializeDB() {
-  db = await open({
-    filename: './users.db',
-    driver: sqlite3.Database
-  });
-
-  // Create users table if it doesn't exist
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE,
-      password TEXT
-    )
-  `);
-  console.log('Database initialized.');
-}
-
-initializeDB().catch(err => {
-  console.error("Database initialization failed:", err);
-});
+// In-memory database (since Render free tier uses ephemeral disks anyway, 
+// this avoids the SQLite GLIBC native binary compilation errors on their servers!)
+const users = [];
 
 // Signup Route
 app.post('/signup', async (req, res) => {
@@ -40,18 +19,21 @@ app.post('/signup', async (req, res) => {
   }
 
   try {
+    const userExists = users.find(u => u.email === email);
+    if (userExists) {
+      return res.status(400).json({ error: 'Email already exists' });
+    }
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     
-    await db.run('INSERT INTO users (email, password) VALUES (?, ?)', [email, hashedPassword]);
+    users.push({ email, password: hashedPassword });
+    console.log(`User registered: ${email}`);
+    
     res.json({ message: 'User registered successfully!' });
   } catch (error) {
-    if (error.message && error.message.includes('UNIQUE constraint failed')) {
-      res.status(400).json({ error: 'Email already exists' });
-    } else {
-      console.error(error);
-      res.status(500).json({ error: 'Server error' });
-    }
+    console.error(error);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -63,7 +45,7 @@ app.post('/login', async (req, res) => {
   }
 
   try {
-    const user = await db.get('SELECT * FROM users WHERE email = ?', [email]);
+    const user = users.find(u => u.email === email);
     if (!user) {
       return res.status(400).json({ error: 'Invalid email or password' });
     }
